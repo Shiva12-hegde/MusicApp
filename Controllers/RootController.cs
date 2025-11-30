@@ -184,7 +184,7 @@ public class RootController : ControllerBase
       <section class=""panel"">
         <h2>Now Playing</h2>
         <div id=""now-playing"">Select a song</div>
-        <audio id=""audio-player"" controls></audio>
+        <audio id=""audio-player"" controls preload=""metadata""></audio>
       </section>
     </main>
   </div>
@@ -239,15 +239,83 @@ public class RootController : ControllerBase
           li.appendChild(title);
           li.appendChild(meta);
 
-          li.addEventListener(""click"", () => {
+          li.addEventListener(""click"", async () => {
             document
               .querySelectorAll("".song-item"")
               .forEach((el) => el.classList.remove(""active""));
             li.classList.add(""active"");
 
-            nowPlaying.textContent = song.title;
-            audioPlayer.src = song.url;
-            audioPlayer.play().catch(() => {});
+            nowPlaying.textContent = ""Loading: "" + song.title;
+            console.log(""Loading song:"", song.url);
+            
+            // Stop any currently playing audio
+            audioPlayer.pause();
+            audioPlayer.currentTime = 0;
+            
+            // Set up error handler before loading
+            let errorHandler = function(e) {
+              console.error(""Audio error:"", audioPlayer.error);
+              const errorCode = audioPlayer.error ? audioPlayer.error.code : -1;
+              let errorMsg = ""Unknown error"";
+              if (audioPlayer.error) {
+                switch(audioPlayer.error.code) {
+                  case 1: errorMsg = ""Media aborted""; break;
+                  case 2: errorMsg = ""Network error - file not found""; break;
+                  case 3: errorMsg = ""Decode error - invalid audio format""; break;
+                  case 4: errorMsg = ""Source not supported""; break;
+                  default: errorMsg = audioPlayer.error.message || ""Unknown error"";
+                }
+              }
+              nowPlaying.textContent = song.title + "" - Error: "" + errorMsg;
+              console.error(""Audio loading failed. URL:"", song.url, ""Error:"", errorMsg);
+            };
+            
+            audioPlayer.onerror = errorHandler;
+            
+            // Wait for audio to load before playing
+            await new Promise((resolve) => {
+              const handleCanPlay = () => {
+                audioPlayer.removeEventListener(""canplay"", handleCanPlay);
+                audioPlayer.removeEventListener(""error"", errorHandler);
+                console.log(""Audio ready to play:"", song.url);
+                resolve();
+              };
+              
+              // If already loaded, resolve immediately
+              if (audioPlayer.readyState >= 2) {
+                resolve();
+                return;
+              }
+              
+              audioPlayer.addEventListener(""canplay"", handleCanPlay);
+              
+              // Set the source and load
+              audioPlayer.src = song.url;
+              audioPlayer.load();
+              
+              // Timeout after 10 seconds
+              setTimeout(() => {
+                if (audioPlayer.readyState < 2) {
+                  audioPlayer.removeEventListener(""canplay"", handleCanPlay);
+                  audioPlayer.removeEventListener(""error"", errorHandler);
+                  console.error(""Audio loading timeout for:"", song.url);
+                  nowPlaying.textContent = song.title + "" - Error: Loading timeout. Check if file exists."";
+                  resolve();
+                }
+              }, 10000);
+            });
+            
+            // Try to play
+            try {
+              nowPlaying.textContent = song.title;
+              await audioPlayer.play();
+              console.log(""Audio playing successfully:"", song.url);
+              audioPlayer.onerror = null;
+            } catch (error) {
+              console.error(""Error playing audio:"", error);
+              nowPlaying.textContent = song.title + "" - Error: Could not play. "" + 
+                (error.message || ""Check console for details."");
+            }
           });
 
           songsList.appendChild(li);

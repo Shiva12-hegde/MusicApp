@@ -32,6 +32,11 @@ var app = builder.Build();
 app.UseSwagger();
 app.UseSwaggerUI();
 
+// ✅ Enable static files serving (needed for MP3 files in wwwroot/music)
+// This must come before routing/controllers so static files are checked first
+app.UseStaticFiles();
+
+app.UseRouting();
 app.UseCors("AllowAll");
 app.UseAuthorization();
 
